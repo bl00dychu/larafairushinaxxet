@@ -1,88 +1,125 @@
+"""Скользящие средние на основе collections.deque."""
 from __future__ import annotations
+import math
 from collections import deque
-from typing import Sequence
+from typing import Deque, List, Sequence
 
 def _ensure_not_empty(data: Sequence[float]) -> None:
-    """Проверяет, что числовой ряд не пустой."""
-    if not data:
+    if data is None or len(data) == 0:
         raise ValueError(
             "Ряд пуст: расчёт скользящей средней невозможен"
         )
 def _check_window(window: int, n: int) -> None:
-    """Проверяет корректность размера окна."""
     if not isinstance(window, int) or isinstance(window, bool):
         raise ValueError(
             f"window должен быть целым, получено: {window!r}"
         )
-    if window <= 0:
-        raise ValueError("window должен быть больше нуля")
+
+    if window < 1:
+        raise ValueError(
+            f"window должен быть >= 1, получено: {window}"
+        )
 
     if window > n:
         raise ValueError(
-            "window не может быть больше длины ряда"
+            f"window ({window}) больше длины ряда ({n}) — SMA невозможна"
         )
-def _check_alpha(alpha: float) -> None:
-    """Проверяет коэффициент сглаживания."""
-    if not isinstance(alpha, (int, float)) or isinstance(alpha, bool):
-        raise ValueError("alpha должен быть числом")
 
-    if not 0 < alpha <= 1:
-        raise ValueError("alpha должен находиться в диапазоне (0, 1]")
+def _check_alpha(alpha: float) -> float:
+    if isinstance(alpha, bool):
+        raise ValueError(
+            f"alpha должен быть в (0, 1], получено: {alpha!r}"
+        )
+
+    try:
+        value = float(alpha)
+    except (TypeError, ValueError, OverflowError) as err:
+        raise ValueError(
+            f"alpha должен быть в (0, 1], получено: {alpha!r}"
+        ) from err
+
+    if not math.isfinite(value) or not 0.0 < value <= 1.0:
+        raise ValueError(
+            f"alpha должен быть в (0, 1], получено: {alpha!r}"
+        )
+
+    return value
+
 def simple_moving_average_deque(
     data: Sequence[float],
     window: int
-) -> list[float]:
-    """Простая скользящая средняя через deque."""
+) -> List[float]:
+    """SMA через deque."""
+
     _ensure_not_empty(data)
     _check_window(window, len(data))
 
-    q = deque(maxlen=window)
+    buffer: Deque[float] = deque(maxlen=window)
+
+    running_sum = 0.0
     result = []
-    current_sum = 0.0
 
-    for value in data:
-        if len(q) == window:
-            current_sum -= q[0]
+    for index, value in enumerate(data):
 
-        q.append(value)
-        current_sum += value
+        if len(buffer) == window:
+            running_sum -= buffer[0]
 
-        if len(q) == window:
-            result.append(current_sum / window)
+        buffer.append(value)
+        running_sum += value
+
+        if index >= window - 1:
+            result.append(running_sum / window)
 
     return result
 
 def centered_moving_average_deque(
     data: Sequence[float],
     window: int
-) -> list[float]:
-    """Центрированная скользящая средняя через deque."""
+) -> List[float]:
+    """Центрированная SMA через deque."""
+
     _ensure_not_empty(data)
     _check_window(window, len(data))
 
     if window % 2 == 0:
-        raise ValueError("Для центрированной средней окно должно быть нечётным")
+        raise ValueError(
+            "Центрированное MA требует нечётного окна; "
+            "window должно быть нечётным"
+        )
 
     return simple_moving_average_deque(data, window)
+
 
 def exponential_moving_average_deque(
     data: Sequence[float],
     alpha: float
-) -> list[float]:
-    """Экспоненциальная скользящая средняя через deque."""
+) -> List[float]:
+    """EMA с использованием deque для хранения последнего значения."""
+
     _ensure_not_empty(data)
-    _check_alpha(alpha)
+    alpha_value = _check_alpha(alpha)
 
-    q = deque(maxlen=1)
-    result = []
+    history: Deque[float] = deque(maxlen=1)
 
-    for value in data:
-        if not q:
-            current = float(value)
-        else:
-            current = alpha * value + (1 - alpha) * q[0]
+    previous = float(data[0])
+    result = [previous]
 
-        q.append(current)
-        result.append(current)
+    history.append(previous)
+
+    for value in data[1:]:
+
+        previous = (
+            alpha_value * value
+            + (1.0 - alpha_value) * previous
+        )
+
+        history.append(float(previous))
+        result.append(float(previous))
 
     return result
+
+__all__ = [
+    "simple_moving_average_deque",
+    "centered_moving_average_deque",
+    "exponential_moving_average_deque",
+]
